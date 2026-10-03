@@ -3,8 +3,9 @@
 
 功能：
   - 截图翻译：Ctrl+Shift+T 框选屏幕区域，OCR 识别并翻译，结果悬浮窗显示
-  - 剪贴板翻译：Ctrl+Shift+C 直接翻译剪贴板文本
+  - 剪贴板翻译：Ctrl+Shift+C 直接翻译剪贴板文本；复制文本时自动翻译（可在设置关闭）
   - 文本翻译：Ctrl+Shift+W 打开文本翻译窗口，输入即译
+  - 屏幕实时翻译：Ctrl+Shift+R 开启，后台监控屏幕英文并实时浮出中文译文（Esc 停止）
   - 设置：Ctrl+Shift+S（切换翻译引擎 / 配置大模型 API / 热键）
 """
 import ctypes
@@ -12,8 +13,8 @@ import os
 import queue
 import sys
 import threading
+import time
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import messagebox
 
 import keyboard
@@ -24,6 +25,8 @@ from core.config import APP_NAME, APP_VERSION, load as load_config
 from core.engines import TranslateError, create_engine
 from core.ocr import OCR
 from core.screenshotter import grab_selection
+from core.screen_monitor import ScreenMonitor
+from ui.overlay_window import OverlayWindow
 from ui.result_window import ResultWindow
 from ui.settings_window import SettingsWindow
 from ui.text_window import TextWindow
@@ -53,6 +56,11 @@ class App:
         self.tray = None
         self.text_window = None
         self.result_windows = []
+        self.monitor = None
+        self.overlay = None
+        self._clip_last = None
+        self._last_translated_source = None
+        self._monitor_esc_registered = False
 
         self._poll_queue()
         self._register_hotkeys(self.config.get("hotkeys", {}))
@@ -66,6 +74,7 @@ class App:
                 self._handle(task)
         except queue.Empty:
             pass
+        self._check_clipboard()
         self.root.after(100, self._poll_queue)
 
     def _handle(self, task):
@@ -78,6 +87,11 @@ class App:
             self.open_text_window()
         elif kind == "settings":
             self.open_settings()
+        elif kind == "monitor_toggle":
+            self.toggle_screen_monitor()
+        elif kind == "monitor_update":
+            _, blocks, region = task
+            self.update_overlay(blocks, region)
         elif kind == "ocr_result":
             _, box, source, translated = task
             self.show_result(box, source, translated)
@@ -128,6 +142,7 @@ class App:
     # ================= 功能：通用翻译 =================
     def _translate_async(self, text):
         target = self.config["target_lang"]
+        self._last_translated_source = text
 
         def work():
             try:
@@ -149,6 +164,63 @@ class App:
     def _remove_result(self, win):
         if win in self.result_windows:
             self.result_windows.remove(win)
+
+    # ================= 屏幕实时翻译 =================
+    def toggle_screen_monitor(self):
+        if self.monitor and self.monitor.running:
+            self.stop_screen_monitor()
+            return
+        # 框选监控区域；按 Esc 则监控全屏
+        try:
+            box, _img = grab_selection(self.root)
+        except Exception as e:
+            self.q.put(("error", f"框选失败: {e}"))
+            return
+        if box is None:
+            box = (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        self.start_screen_monitor(box)
+
+    def start_screen_monitor(self, region):
+        if self.monitor and self.monitor.running:
+            return
+        self.overlay = OverlayWindow(self.root)
+        self.monitor = ScreenMonitor(self.ocr, self.engine, self.config,
+                                     lambda blocks, r: self.q.put(("monitor_update", blocks, r)))
+        self.monitor.start(region)
+        if not self._monitor_esc_registered:
+            try:
+                keyboard.add_hotkey("esc", self._esc_handler)
+                self._monitor_esc_registered = True
+            except Exception:
+                pass
+
+    def _esc_handler(self):
+        # 实时翻译运行时按 Esc 停止
+        if self.monitor and self.monitor.running:
+            self.q.put(("monitor_toggle",))
+
+    def stop_screen_monitor(self):
+        if self.monitor:
+            self.monitor.stop()
+        if self.overlay:
+            self.overlay.destroy()
+            self.overlay = None
+
+    def update_overlay(self, blocks, region):
+        if self.overlay:
+            self.overlay.update_blocks(blocks, region)
+
+    # ================= 复制即译 =================
+    def _check_clipboard(self):
+        try:
+            if self.config.get("auto_translate_clipboard", True):
+                text = (self.root.clipboard_get() or "").strip()
+                if text and text != self._clip_last and len(text) <= 5000:
+                    self._clip_last = text
+                    if text != self._last_translated_source:
+                        self._translate_async(text)
+        except Exception:
+            pass  # 剪贴板被占用/无文本时忽略
 
     # ================= 窗口：文本翻译 / 设置 =================
     def open_text_window(self):
@@ -177,6 +249,7 @@ class App:
             "clipboard": lambda: self.q.put(("clipboard",)),
             "text": lambda: self.q.put(("text",)),
             "settings": lambda: self.q.put(("settings",)),
+            "monitor": lambda: self.q.put(("monitor_toggle",)),
         }
         for name, key in hk.items():
             if not key or name not in handlers:
@@ -190,6 +263,7 @@ class App:
     def _setup_tray(self):
         icon_image = self._make_icon()
         menu = pystray.Menu(
+            pystray.MenuItem("屏幕实时翻译 (Ctrl+Shift+R)", lambda: self.q.put(("monitor_toggle",))),
             pystray.MenuItem("截图翻译 (Ctrl+Shift+T)", lambda: self.q.put(("screenshot",))),
             pystray.MenuItem("翻译剪贴板 (Ctrl+Shift+C)", lambda: self.q.put(("clipboard",))),
             pystray.MenuItem("文本翻译 (Ctrl+Shift+W)", lambda: self.q.put(("text",))),
@@ -223,6 +297,10 @@ class App:
             keyboard.unhook_all_hotkeys()
         except Exception:
             pass
+        if self.monitor and self.monitor.running:
+            self.monitor.stop()
+        if self.overlay:
+            self.overlay.destroy()
         if self.tray:
             try:
                 self.tray.stop()

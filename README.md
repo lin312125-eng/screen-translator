@@ -8,10 +8,18 @@ Windows 桌面翻译小工具：**截图翻译** + **剪贴板翻译** + **文�
 
 | 功能 | 快捷键（可在设置中修改） | 说明 |
 |---|---|---|
+| 屏幕实时翻译 | `Ctrl+Shift+R` | 框选监控区域（Esc 即全屏），后台自动识别屏幕上英文并实时浮出中文译文，按 `Esc` 停止 |
 | 截图翻译 | `Ctrl+Shift+T` | 全屏遮罩 + 鼠标框选区域 → 本地 OCR 识别 → 翻译 → 悬浮窗双语对照 |
 | 剪贴板翻译 | `Ctrl+Shift+C` | 复制任意文本后一键翻译（适合软件内无法直接选中的文字） |
 | 文本翻译 | `Ctrl+Shift+W` | 打开文本窗口，输入即译（700ms 防抖），支持 15 种目标语言 |
 | 设置 | `Ctrl+Shift+S` | 切换引擎、配置大模型 API Key、修改热键 |
+
+**复制即译**：默认开启，在任何应用里复制文本（Ctrl+C）即自动弹出译文，零操作。可在设置中关闭。
+
+**屏幕实时翻译说明**：类似 Edge 网页翻译的全局版——框选区域后，程序每 2.5 秒（可调）检查屏幕变化，识别到英文界面文字就在原文位置实时浮出中文译文。注意：
+- 译文以悬浮层呈现，无法替换第三方应用的原文字（系统限制），原文滚动/切换时译文自动更新；
+- 覆盖层透明区域鼠标可正常点击穿透，译文块位置会拦截点击（按 `Esc` 可随时停止）；
+- 连续滚动页面时翻译请求较多，免费接口可能限流——建议此模式配合大模型 API Key 使用（设置中填入）。
 
 程序常驻系统托盘，托盘菜单也可触发以上所有功能。
 
@@ -63,11 +71,14 @@ python -m PyInstaller --noconfirm --onefile --windowed --icon assets/icon.ico \
   "engine": "auto",
   "llm": { "base_url": "", "api_key": "", "model": "" },
   "target_lang": "zh-CN",
+  "monitor_interval": 2.5,
+  "auto_translate_clipboard": true,
   "hotkeys": {
     "screenshot": "ctrl+shift+t",
     "clipboard": "ctrl+shift+c",
     "text": "ctrl+shift+w",
-    "settings": "ctrl+shift+s"
+    "settings": "ctrl+shift+s",
+    "monitor": "ctrl+shift+r"
   }
 }
 ```

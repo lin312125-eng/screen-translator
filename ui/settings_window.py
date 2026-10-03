@@ -29,7 +29,7 @@ class SettingsWindow:
         self.cfg = app.config
         self.win = tk.Toplevel(self.root)
         self.win.title("设置")
-        self.win.geometry("520x560")
+        self.win.geometry("540x760")
         self.win.configure(bg="#111827")
         self.win.resizable(False, False)
         self.win.protocol("WM_DELETE_WINDOW", self.win.destroy)
@@ -71,6 +71,29 @@ class SettingsWindow:
                     activebackground="#374151", font=("Microsoft YaHei UI", 10))
         menu["menu"].config(bg="#1f2937", fg="#e5e7eb")
         menu.pack(side="left")
+
+        # ======== 行为选项 ========
+        self._section(body, "行为")
+        self.auto_clip_var = tk.BooleanVar(value=self.cfg.get("auto_translate_clipboard", True))
+        cb = tk.Checkbutton(body, text="复制文本时自动翻译（在任何应用里 Ctrl+C 即弹译文）",
+                            variable=self.auto_clip_var, bg="#111827", fg="#e5e7eb",
+                            selectcolor="#111827", activebackground="#111827",
+                            activeforeground="#ffffff",
+                            font=("Microsoft YaHei UI", 10), anchor="w")
+        cb.pack(fill="x", padx=(8, 0), pady=2)
+        int_row = tk.Frame(body, bg="#111827")
+        int_row.pack(fill="x", padx=(8, 0), pady=2)
+        tk.Label(int_row, text="实时翻译刷新间隔(秒):", bg="#111827", fg="#9ca3af",
+                 font=("Microsoft YaHei UI", 10)).pack(side="left")
+        self.interval_var = tk.StringVar(value=str(self.cfg.get("monitor_interval", 2.5)))
+        sp = tk.Spinbox(int_row, from_=1.0, to=10.0, increment=0.5, width=6,
+                        textvariable=self.interval_var, bg="#1f2937", fg="#f9fafb",
+                        insertbackground="#f9fafb", buttonbackground="#374151",
+                        relief="flat", highlightthickness=1, highlightbackground="#374151",
+                        font=("Microsoft YaHei UI", 10))
+        sp.pack(side="left", padx=(6, 0))
+        tk.Label(int_row, text="（越小越灵敏，CPU 占用越高）", bg="#111827", fg="#6b7280",
+                 font=("Microsoft YaHei UI", 9)).pack(side="left", padx=(8, 0))
 
         # ======== 全局热键 ========
         self._section(body, "全局热键（格式示例：ctrl+shift+t）")
@@ -132,6 +155,11 @@ class SettingsWindow:
         cfg["llm"]["api_key"] = self.llm_api_key.get().strip()
         cfg["llm"]["model"] = self.llm_model.get().strip()
         cfg["target_lang"] = self.lang_var.get()
+        cfg["auto_translate_clipboard"] = bool(self.auto_clip_var.get())
+        try:
+            cfg["monitor_interval"] = float(self.interval_var.get())
+        except ValueError:
+            pass
         new_hk = {}
         for key, var in self.hk_vars.items():
             val = var.get().strip().lower()

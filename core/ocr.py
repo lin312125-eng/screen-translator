@@ -28,3 +28,26 @@ class OCR:
             return ""
         lines = [str(item[1]) for item in result if len(item) >= 2 and item[1]]
         return "\n".join(lines).strip()
+
+    def recognize_boxes(self, pil_image: Image.Image):
+        """识别并返回带坐标的文本块：[(left, top, width, height, text), ...]（像素坐标）。"""
+        engine = self._get_engine()
+        img = np.array(pil_image.convert("RGB"))
+        result, _ = engine(img)
+        blocks = []
+        for item in result or []:
+            if len(item) < 2 or not item[1]:
+                continue
+            box = item[0]
+            text = str(item[1])
+            try:
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+            except (TypeError, IndexError):
+                continue
+            left, top = int(min(xs)), int(min(ys))
+            right, bottom = int(max(xs)), int(max(ys))
+            if right - left < 4 or bottom - top < 4:
+                continue
+            blocks.append((left, top, right - left, bottom - top, text))
+        return blocks

@@ -5,7 +5,7 @@ import os
 import sys
 
 APP_NAME = "随译 ScreenTranslator"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 
 def base_dir() -> str:
@@ -25,11 +25,14 @@ DEFAULT_CONFIG = {
         "model": "",
     },
     "target_lang": "zh-CN",      # 目标语言
+    "monitor_interval": 2.5,     # 屏幕实时翻译轮询间隔（秒）
+    "auto_translate_clipboard": True,  # 复制文本时自动翻译
     "hotkeys": {
         "screenshot": "ctrl+shift+t",   # 截图翻译
         "clipboard": "ctrl+shift+c",    # 翻译剪贴板
         "text": "ctrl+shift+w",         # 文本翻译窗口
         "settings": "ctrl+shift+s",     # 设置
+        "monitor": "ctrl+shift+r",      # 屏幕实时翻译开关
     },
 }
 
